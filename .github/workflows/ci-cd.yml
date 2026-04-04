@@ -29,6 +29,8 @@ jobs:
     env:
       DATABASE_URL: postgres://appuser:apppass@localhost:5432/appdb?sslmode=disable
       RUN_INTEGRATION_TESTS: "true"
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,11 +61,8 @@ jobs:
           version: latest
 
       - name: SonarQube Scan
-        if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_HOST_URL != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         uses: SonarSource/sonarqube-scan-action@v5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       - name: SAST (Semgrep)
         uses: semgrep/semgrep-action@v1
@@ -75,6 +74,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: ci
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,47 +108,53 @@ jobs:
           severity: CRITICAL,HIGH
 
       - name: Docker Hub Login
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build and Push image
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/go-api-cicd:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/go-api-cicd:${{ github.sha }}
+            ${{ env.DOCKERHUB_USERNAME }}/go-api-cicd:latest
+            ${{ env.DOCKERHUB_USERNAME }}/go-api-cicd:${{ github.sha }}
 
   deploy_hml:
     name: CD - Deploy Homolog + DAST
     if: github.ref == 'refs/heads/main'
     needs: container
     runs-on: ubuntu-latest
+    env:
+      RENDER_HML_DEPLOY_HOOK: ${{ secrets.RENDER_HML_DEPLOY_HOOK }}
+      HML_APP_URL: ${{ secrets.HML_APP_URL }}
     steps:
       - name: Deploy Render Homolog
-        if: ${{ secrets.RENDER_HML_DEPLOY_HOOK != '' }}
-        run: curl -X POST "${{ secrets.RENDER_HML_DEPLOY_HOOK }}"
+        if: ${{ env.RENDER_HML_DEPLOY_HOOK != '' }}
+        run: curl -X POST "${{ env.RENDER_HML_DEPLOY_HOOK }}"
 
       - name: DAST (OWASP ZAP Baseline)
-        if: ${{ secrets.HML_APP_URL != '' }}
+        if: ${{ env.HML_APP_URL != '' }}
         uses: zaproxy/action-baseline@v0.14.0
         with:
-          target: ${{ secrets.HML_APP_URL }}
+          target: ${{ env.HML_APP_URL }}
 
   deploy_prod:
     name: CD - Deploy Production
     if: github.ref == 'refs/heads/main'
     needs: deploy_hml
     runs-on: ubuntu-latest
+    env:
+      RENDER_PROD_DEPLOY_HOOK: ${{ secrets.RENDER_PROD_DEPLOY_HOOK }}
+      PROD_APP_URL: ${{ secrets.PROD_APP_URL }}
     environment:
       name: production
-      url: ${{ secrets.PROD_APP_URL }}
+      url: ${{ env.PROD_APP_URL }}
     steps:
       - name: Deploy Render Production
-        if: ${{ secrets.RENDER_PROD_DEPLOY_HOOK != '' }}
-        run: curl -X POST "${{ secrets.RENDER_PROD_DEPLOY_HOOK }}"
+        if: ${{ env.RENDER_PROD_DEPLOY_HOOK != '' }}
+        run: curl -X POST "${{ env.RENDER_PROD_DEPLOY_HOOK }}"
