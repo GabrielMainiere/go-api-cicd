@@ -156,6 +156,8 @@ jobs:
         uses: zaproxy/action-baseline@v0.14.0
         with:
           target: ${{ env.HML_APP_URL }}/users
+          allow_issue_writing: false
+          fail_action: false
 
   deploy_prod:
     name: CD - Deploy Production
