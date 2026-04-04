@@ -16,8 +16,16 @@ func NewUserController(s *UserService) *UserController {
 }
 
 func (c *UserController) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, _ := c.service.ListUsers()
-	json.NewEncoder(w).Encode(users)
+	users, err := c.service.ListUsers()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -29,23 +37,40 @@ func (c *UserController) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var u User
-	json.NewDecoder(r.Body).Decode(&u)
+	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
 
-	created, _ := c.service.CreateUser(u)
+	created, err := c.service.CreateUser(u)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(created)
+	if err := json.NewEncoder(w).Encode(created); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *UserController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	id := extractID(r.URL.Path)
 
 	var u User
-	json.NewDecoder(r.Body).Decode(&u)
+	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
 
 	updated, err := c.service.UpdateUser(id, u)
 	if err != nil {
@@ -53,7 +78,10 @@ func (c *UserController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(updated)
+	if err := json.NewEncoder(w).Encode(updated); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *UserController) DeleteUser(w http.ResponseWriter, r *http.Request) {
