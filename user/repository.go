@@ -2,6 +2,7 @@ package user
 
 import (
 	"errors"
+	"os"
 )
 
 type InMemoryUserRepository struct {
@@ -9,11 +10,24 @@ type InMemoryUserRepository struct {
 	nextID int
 }
 
-func NewUserRepository() UserRepository {
+func NewInMemoryUserRepository() UserRepository {
 	return &InMemoryUserRepository{
 		users:  []User{},
 		nextID: 1,
 	}
+}
+
+func NewUserRepository() UserRepository {
+	return NewInMemoryUserRepository()
+}
+
+func NewUserRepositoryFromEnv() (UserRepository, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return NewInMemoryUserRepository(), nil
+	}
+
+	return NewPostgresUserRepository(databaseURL)
 }
 
 func (r *InMemoryUserRepository) GetAll() ([]User, error) {

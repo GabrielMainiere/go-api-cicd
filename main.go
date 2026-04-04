@@ -1,15 +1,25 @@
 package main
 
 import (
-	"net/http"
-	"log"
 	"api-go/user"
+	"log"
+	"net/http"
+	"os"
 )
 
 func main() {
-	repo := user.NewUserRepository()
+	repo, err := user.NewUserRepositoryFromEnv()
+	if err != nil {
+		log.Fatalf("failed to initialize repository: %v", err)
+	}
+
 	service := user.NewUserService(repo)
 	controller := user.NewUserController(service)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
 
 	mux := http.NewServeMux()
 
@@ -33,6 +43,6 @@ func main() {
 		}
 	})
 
-	log.Println("Server running on http://localhost:3000")
-	log.Fatal(http.ListenAndServe(":3001", mux))
+	log.Printf("Server running on http://localhost:%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
