@@ -135,7 +135,15 @@ jobs:
     steps:
       - name: Deploy Render Homolog
         if: ${{ env.RENDER_HML_DEPLOY_HOOK != '' }}
-        run: curl -X POST "$RENDER_HML_DEPLOY_HOOK"
+        run: |
+          status=$(curl -sS -o /tmp/render_hml_deploy_response.txt -w "%{http_code}" -X POST "$RENDER_HML_DEPLOY_HOOK")
+          echo "Render HML deploy hook HTTP status: $status"
+          echo "Render HML deploy hook response:"
+          cat /tmp/render_hml_deploy_response.txt || true
+          if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+            echo "Failed to trigger Render HML deploy hook."
+            exit 1
+          fi
 
       - name: Wait for Homolog readiness
         if: ${{ env.HML_APP_URL != '' }}
@@ -173,4 +181,12 @@ jobs:
     steps:
       - name: Deploy Render Production
         if: ${{ env.RENDER_PROD_DEPLOY_HOOK != '' }}
-        run: curl -X POST "$RENDER_PROD_DEPLOY_HOOK"
+        run: |
+          status=$(curl -sS -o /tmp/render_prod_deploy_response.txt -w "%{http_code}" -X POST "$RENDER_PROD_DEPLOY_HOOK")
+          echo "Render PROD deploy hook HTTP status: $status"
+          echo "Render PROD deploy hook response:"
+          cat /tmp/render_prod_deploy_response.txt || true
+          if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+            echo "Failed to trigger Render PROD deploy hook."
+            exit 1
+          fi
