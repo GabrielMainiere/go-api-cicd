@@ -135,7 +135,7 @@ jobs:
     steps:
       - name: Deploy Render Homolog
         if: ${{ env.RENDER_HML_DEPLOY_HOOK != '' }}
-        run: curl -X POST "${{ env.RENDER_HML_DEPLOY_HOOK }}"
+        run: curl -X POST "$RENDER_HML_DEPLOY_HOOK"
 
       - name: DAST (OWASP ZAP Baseline)
         if: ${{ env.HML_APP_URL != '' }}
@@ -157,4 +157,4 @@ jobs:
     steps:
       - name: Deploy Render Production
         if: ${{ env.RENDER_PROD_DEPLOY_HOOK != '' }}
-        run: curl -X POST "${{ env.RENDER_PROD_DEPLOY_HOOK }}"
+        run: curl -X POST "$RENDER_PROD_DEPLOY_HOOK"
