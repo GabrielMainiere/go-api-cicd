@@ -1,16 +1,57 @@
-name: go-api-ci-cd
+name: go-api-cicd
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  ci:
-    name: CI - Build, Test, Lint, Quality, SAST
+  build:
+    name: CI - Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+  lint:
+    name: CI - Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  test_quality:
+    name: CI - Test and Quality
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -31,9 +72,12 @@ jobs:
       RUN_INTEGRATION_TESTS: "true"
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -41,10 +85,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Download dependencies
-        run: go mod tidy
-
-      - name: Build
-        run: go build ./...
+        run: go mod download
 
       - name: Unit tests
         run: go test ./...
@@ -55,16 +96,26 @@ jobs:
       - name: Coverage
         run: go test ./... -coverprofile=coverage.out
 
-      - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-
-      - name: SonarQube Scan
+      - name: SonarQube scan
         if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
         uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
-      - name: SAST (Semgrep)
+      - name: SonarQube skipped
+        if: ${{ !(env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '') }}
+        run: echo "SONAR_TOKEN ou SONAR_HOST_URL nao configurados. Etapa SonarQube ignorada."
+
+  sast:
+    name: CI - SAST
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SAST with Semgrep
         uses: semgrep/semgrep-action@v1
         with:
           config: p/ci
@@ -72,11 +123,12 @@ jobs:
   container:
     name: Container - Lint, Build, Scan, Push
     if: github.ref == 'refs/heads/main'
-    needs: ci
+    needs: [build, lint, test_quality, sast]
     runs-on: ubuntu-latest
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,6 +145,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: false
           load: true
           tags: go-api-cicd:${{ github.sha }}
@@ -119,19 +172,21 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/go-api-cicd:latest
             ${{ env.DOCKERHUB_USERNAME }}/go-api-cicd:${{ github.sha }}
 
   deploy_hml:
-    name: CD - Deploy Homolog + DAST
+    name: CD - Deploy Homolog
     if: github.ref == 'refs/heads/main'
     needs: container
     runs-on: ubuntu-latest
     env:
       RENDER_HML_DEPLOY_HOOK: ${{ secrets.RENDER_HML_DEPLOY_HOOK }}
       HML_APP_URL: ${{ secrets.HML_APP_URL }}
+
     steps:
       - name: Deploy Render Homolog
         if: ${{ env.RENDER_HML_DEPLOY_HOOK != '' }}
@@ -159,6 +214,15 @@ jobs:
           echo "Homolog app did not become ready in time."
           exit 1
 
+  dast_hml:
+    name: CD - DAST Homolog
+    if: github.ref == 'refs/heads/main'
+    needs: deploy_hml
+    runs-on: ubuntu-latest
+    env:
+      HML_APP_URL: ${{ secrets.HML_APP_URL }}
+
+    steps:
       - name: DAST (OWASP ZAP Baseline)
         if: ${{ env.HML_APP_URL != '' }}
         uses: zaproxy/action-baseline@v0.14.0
@@ -167,10 +231,14 @@ jobs:
           allow_issue_writing: false
           fail_action: false
 
+      - name: DAST skipped
+        if: ${{ env.HML_APP_URL == '' }}
+        run: echo "HML_APP_URL nao configurada. Etapa DAST ignorada."
+
   deploy_prod:
     name: CD - Deploy Production
     if: github.ref == 'refs/heads/main'
-    needs: deploy_hml
+    needs: dast_hml
     runs-on: ubuntu-latest
     env:
       RENDER_PROD_DEPLOY_HOOK: ${{ secrets.RENDER_PROD_DEPLOY_HOOK }}
@@ -178,6 +246,7 @@ jobs:
     environment:
       name: production
       url: ${{ env.PROD_APP_URL }}
+
     steps:
       - name: Deploy Render Production
         if: ${{ env.RENDER_PROD_DEPLOY_HOOK != '' }}
